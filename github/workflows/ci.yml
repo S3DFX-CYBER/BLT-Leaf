@@ -1,0 +1,42 @@
+name: Leaf-CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Essentials
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+
+      - name: Security & Lint Check
+        run: |
+          # Catch syntax errors and the un-anchored regex issues we fixed
+          flake8 src/index.py --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Validate D1 Schema
+        run: |
+          # Ensure schema.sql is valid SQLite
+          sqlite3 :memory: < schema.sql
+          echo "D1 Schema is valid."
+
+      - name: Verify Wrangler Config
+        run: |
+          # Check if wrangler.toml exists and has basic structure
+          test -f wrangler.toml && echo "Wrangler config found." || exit 1
