@@ -1,0 +1,35 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest flake8 black safety
+
+      - name: Lint
+        run: flake8 .
+
+      - name: Format check
+        run: black --check .
+
+      - name: Run tests
+        run: pytest
+
+      - name: Security check
+        run: safety check
