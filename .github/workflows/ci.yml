@@ -12,24 +12,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.10'
+          node-version: '18'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest flake8 black safety
+        run: npm ci
 
       - name: Lint
-        run: flake8 .
+        run: npm run lint
 
       - name: Format check
-        run: black --check .
+        run: npm run format:check
 
       - name: Run tests
-        run: pytest
+        run: npm test
 
-      - name: Security check
-        run: safety check
+      - name: Security audit
+        run: npm audit --audit-level=high
