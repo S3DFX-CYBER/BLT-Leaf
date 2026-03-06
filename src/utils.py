@@ -16,12 +16,12 @@ def parse_pr_url(pr_url):
     """
     Parse GitHub PR URL to extract owner, repo, and PR number.
     
-    Security Hardening (Issue #45):
+    Security Hardening (Issue `#45`):
     - Type validation to prevent type confusion attacks
     - Anchored regex pattern to block malformed URLs with trailing junk
     - Raises ValueError instead of returning None for better error handling
     """
-    # FIX Issue #45: Type validation
+    # FIX Issue `#45`: Type validation
     if not isinstance(pr_url, str):
         raise ValueError("PR URL must be a string")
     
@@ -30,12 +30,12 @@ def parse_pr_url(pr_url):
     
     pr_url = pr_url.strip().rstrip('/')
     
-    # FIX Issue #45: Anchored regex - must match EXACTLY, no trailing junk allowed
+    # FIX Issue `#45`: Anchored regex - must match EXACTLY, no trailing junk allowed
     pattern = r'^https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)$'
     match = re.match(pattern, pr_url)
     
     if not match:
-        # FIX Issue #45: Raise error instead of returning None
+        # FIX Issue `#45`: Raise error instead of returning None
         raise ValueError("Invalid GitHub PR URL. Format: https://github.com/OWNER/REPO/pull/NUMBER")
     
     return {
@@ -576,17 +576,8 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         classification = 'NEEDS_WORK'
     else:
         classification = 'NOT_READY'
-    
-  return {
-    'overall_score': overall_score,
-    'ci_score': ci_score,
-    'review_score': review_score,
-    'classification': classification,
-    'merge_ready': merge_ready,
-    'blockers': blockers,
-    'warnings': warnings,
-    'recommendations': recommendations,
-    'risk_summary': generate_ai_risk_summary({  
+
+    return {
         'overall_score': overall_score,
         'ci_score': ci_score,
         'review_score': review_score,
@@ -594,11 +585,21 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         'merge_ready': merge_ready,
         'blockers': blockers,
         'warnings': warnings,
-        'recommendations': recommendations
-    })
-}
+        'recommendations': recommendations,
+        'risk_summary': generate_ai_risk_summary({
+            'overall_score': overall_score,
+            'ci_score': ci_score,
+            'review_score': review_score,
+            'classification': classification,
+            'merge_ready': merge_ready,
+            'blockers': blockers,
+            'warnings': warnings,
+            'recommendations': recommendations
+        })
+    }
 
-#Add ai summary feat
+
+`#Add` ai summary feat
 def generate_ai_risk_summary(pr_readiness_data):
     """
     Generate a concise AI-powered risk summary for a PR.
@@ -635,6 +636,8 @@ def generate_ai_risk_summary(pr_readiness_data):
     except Exception as e:
         # Fallback to deterministic summary
         return generate_fallback_summary(pr_readiness_data)
+
+
 def generate_fallback_summary(pr_readiness_data):
     """
     Generate a deterministic fallback summary if AI fails.
