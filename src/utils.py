@@ -577,7 +577,16 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
     else:
         classification = 'NOT_READY'
     
-    return {
+  return {
+    'overall_score': overall_score,
+    'ci_score': ci_score,
+    'review_score': review_score,
+    'classification': classification,
+    'merge_ready': merge_ready,
+    'blockers': blockers,
+    'warnings': warnings,
+    'recommendations': recommendations,
+    'risk_summary': generate_ai_risk_summary({  
         'overall_score': overall_score,
         'ci_score': ci_score,
         'review_score': review_score,
@@ -586,4 +595,65 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         'blockers': blockers,
         'warnings': warnings,
         'recommendations': recommendations
-    }
+    })
+}
+
+#Add ai summary feat
+def generate_ai_risk_summary(pr_readiness_data):
+    """
+    Generate a concise AI-powered risk summary for a PR.
+
+    Args:
+        pr_readiness_data: Dict from calculate_pr_readiness()
+
+    Returns:
+        str: AI-generated summary or fallback summary
+    """
+    # Extract key data for the prompt
+    blockers = pr_readiness_data.get('blockers', [])
+    warnings = pr_readiness_data.get('warnings', [])
+    recommendations = pr_readiness_data.get('recommendations', [])
+    overall_score = pr_readiness_data.get('overall_score', 0)
+    classification = pr_readiness_data.get('classification', 'NOT_READY')
+
+    # Build the prompt for Gemini
+    prompt = (
+        f"Generate a concise, professional risk summary for a PR with the following details:\n"
+        f"- Classification: {classification}\n"
+        f"- Overall score: {overall_score}\n"
+        f"- Blockers: {blockers}\n"
+        f"- Warnings: {warnings}\n"
+        f"- Recommendations: {recommendations}\n\n"
+        f"Focus on why the PR may be risky and what should be addressed first. "
+        f"Keep the summary to 1-2 sentences. If the PR is ready, say so clearly."
+    )
+
+    # Call Gemini (pseudo-code; replace with actual API call)
+    try:
+        ai_summary = call_gemini_api(prompt)  # Replace with your Gemini integration
+        return ai_summary
+    except Exception as e:
+        # Fallback to deterministic summary
+        return generate_fallback_summary(pr_readiness_data)
+def generate_fallback_summary(pr_readiness_data):
+    """
+    Generate a deterministic fallback summary if AI fails.
+    """
+    blockers = pr_readiness_data.get('blockers', [])
+    warnings = pr_readiness_data.get('warnings', [])
+    classification = pr_readiness_data.get('classification', 'NOT_READY')
+
+    if blockers:
+        return (
+            f"This PR is not merge-ready due to {len(blockers)} blocker(s), "
+            f"including: {', '.join(blockers[:2])}. "
+            f"Address these issues before proceeding."
+        )
+    elif warnings:
+        return (
+            f"This PR is nearly ready but has {len(warnings)} warning(s), "
+            f"such as: {', '.join(warnings[:2])}. "
+            f"Review these before merging."
+        )
+    else:
+        return f"This PR is {classification.lower().replace('_', ' ')} and ready for review/merge."
