@@ -168,6 +168,21 @@ async def load_readiness_from_db(env, pr_id):
         response_rate = pr.get('response_rate', 0.0)
         
         # Reconstruct the complete response structure with PR info and display fields
+        # Keep risk_summary consistent for cached DB reads even without a dedicated column.
+        from utils import generate_ai_risk_summary
+
+        readiness_payload = {
+            'overall_score': overall_score,
+            'ci_score': ci_score,
+            'review_score': review_score,
+            'classification': pr.get('classification'),
+            'merge_ready': bool(pr.get('merge_ready')),
+            'blockers': blockers,
+            'warnings': warnings,
+            'recommendations': recommendations,
+        }
+        readiness_payload['risk_summary'] = generate_ai_risk_summary(readiness_payload)
+
         readiness_data = {
             'pr': {
                 'id': pr['id'],
@@ -181,17 +196,10 @@ async def load_readiness_from_db(env, pr_id):
                 'files_changed': pr.get('files_changed')
             },
             'readiness': {
-                'overall_score': overall_score,
+                **readiness_payload,
                 'overall_score_display': f"{overall_score}%",
-                'ci_score': ci_score,
                 'ci_score_display': f"{ci_score}%",
-                'review_score': review_score,
-                'review_score_display': f"{review_score}%",
-                'classification': pr.get('classification'),
-                'merge_ready': bool(pr.get('merge_ready')),
-                'blockers': blockers,
-                'warnings': warnings,
-                'recommendations': recommendations
+                'review_score_display': f"{review_score}%"
             },
             'review_health': {
                 'classification': pr.get('review_health_classification'),
