@@ -440,13 +440,13 @@ def calculate_ci_confidence(checks_passed, checks_failed, checks_skipped):
 
 def calculate_pr_readiness(pr_data, review_classification, review_score):
     """
-    Calculate overall PR readiness combining CI and review health
-    
+    Calculate overall PR readiness combining CI and review health.
+
     Args:
-        pr_data: Dict with PR info including CI checks
-        review_classification: str from classify_review_health
-        review_score: int from classify_review_health
-    
+        pr_data: Dict with PR info including CI checks.
+        review_classification: str from classify_review_health.
+        review_score: int from classify_review_health.
+
     Returns:
         Dict with:
         {
@@ -457,7 +457,8 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
             'merge_ready': bool,
             'blockers': List[str],
             'warnings': List[str],
-            'recommendations': List[str]
+            'recommendations': List[str],
+            'risk_summary': str
         }
     """
     # Calculate CI score
@@ -466,107 +467,105 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         pr_data.get('checks_failed', 0),
         pr_data.get('checks_skipped', 0)
     )
-    
+
     # Weighted combination: 45% CI, 55% Review (reduced CI weight due to flaky tests)
     overall_score_raw = (ci_score * 0.45) + (review_score * 0.55)
-    
+
     # Reduce readiness by 50% when changes are requested
     if review_classification == 'AWAITING_AUTHOR':
         overall_score_raw *= _CHANGES_REQUESTED_SCORE_MULTIPLIER
-    
+
     # Reduce readiness by 33% when PR has merge conflicts.
-    # Note: this multiplier compounds with other score multipliers (e.g. changes
-    # requested), so a PR with both conditions would be scaled by
-    # 0.5 * 0.67 = 0.335 (~66.5% total reduction).
+    # Note: this multiplier compounds with other score multipliers.
     mergeable_state = pr_data.get('mergeable_state', '')
     if mergeable_state == 'dirty':
         overall_score_raw *= _MERGE_CONFLICTS_SCORE_MULTIPLIER
-    
+
     overall_score = int(overall_score_raw)
-    
+
     # Force score to 0% for Draft PRs
-    is_draft = pr_data.get('is_draft') == 1 or pr_data.get('is_draft') == True
+    is_draft = pr_data.get('is_draft') == 1 or pr_data.get('is_draft') is True
     if is_draft:
         overall_score = 0
-    
+
     # Deduct 3 points for each open conversation
     open_conversations_count = pr_data.get('open_conversations_count', 0)
     if open_conversations_count > 0:
         overall_score = max(0, overall_score - (open_conversations_count * 3))
-    
+
     # Identify blockers, warnings, recommendations
     blockers = []
     warnings = []
     recommendations = []
-    
+
     # Draft blocker
     if is_draft:
         blockers.append("PR is in draft mode")
         recommendations.append("Convert to 'Ready for review' when finished")
-    
+
     # CI blockers (with tolerance for 1-2 flaky test failures)
     checks_failed = pr_data.get('checks_failed', 0)
     checks_skipped = pr_data.get('checks_skipped', 0)
-    
+
     if checks_failed > 2:
         blockers.append(f"{checks_failed} CI check(s) failing")
         recommendations.append("Fix failing CI checks before merging")
     elif checks_failed > 0:
         warnings.append(f"{checks_failed} CI check(s) failing (possibly flaky tests)")
         recommendations.append("Verify if failures are from known flaky tests (Selenium, Docker)")
-    
+
     if checks_skipped > 0:
         warnings.append(f"{checks_skipped} CI check(s) skipped")
-    
+
     # Review blockers
     if review_classification == 'AWAITING_AUTHOR':
         blockers.append("Awaiting author response to feedback")
         recommendations.append("Address reviewer comments and push updates")
-    
+
     if review_classification == 'STALLED':
         blockers.append("PR has stale unaddressed feedback")
         recommendations.append("Review and respond to old comments")
-    
+
     if review_classification == 'NO_ACTIVITY':
         warnings.append("No review activity yet")
         recommendations.append("Request reviews from maintainers")
-    
+
     if review_classification == 'AWAITING_REVIEWER':
         warnings.append("Awaiting reviewer approval")
         recommendations.append("Ping reviewers or request re-review")
-    
+
     # PR state warnings
     if pr_data.get('state') == 'closed':
         blockers.append("PR is closed")
-    
+
     if pr_data.get('is_merged') == 1:
         blockers.append("PR is already merged")
-    
+
     mergeable_state = pr_data.get('mergeable_state', '')
     if mergeable_state == 'dirty':
         blockers.append("PR has merge conflicts")
         recommendations.append("Resolve merge conflicts with base branch")
     elif mergeable_state == 'blocked':
         warnings.append("PR is blocked by required status checks or reviews")
-    
+
     # File change warnings
     files_changed = pr_data.get('files_changed', 0)
     if files_changed > 30:
         warnings.append(f"Large PR ({files_changed} files changed)")
         recommendations.append("Consider splitting into smaller PRs for easier review")
-    
+
     # Open conversations warning
     if open_conversations_count > 0:
         warnings.append(f"{open_conversations_count} open conversation(s) unresolved")
         recommendations.append("Resolve open review conversations before merging")
-    
+
     # Determine if merge ready
     merge_ready = (
         overall_score >= 70 and
         len(blockers) == 0 and
         review_classification in ['APPROVED', 'AWAITING_REVIEWER', 'ACTIVE']
     )
-    
+
     # Overall classification
     if merge_ready:
         classification = 'READY_TO_MERGE'
@@ -576,8 +575,8 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         classification = 'NEEDS_WORK'
     else:
         classification = 'NOT_READY'
-    
-    return {
+
+    readiness_result = {
         'overall_score': overall_score,
         'ci_score': ci_score,
         'review_score': review_score,
@@ -585,5 +584,65 @@ def calculate_pr_readiness(pr_data, review_classification, review_score):
         'merge_ready': merge_ready,
         'blockers': blockers,
         'warnings': warnings,
-        'recommendations': recommendations
+        'recommendations': recommendations,
     }
+    readiness_result['risk_summary'] = generate_ai_risk_summary(readiness_result)
+    return readiness_result
+
+
+def generate_ai_risk_summary(pr_readiness_data, ai_generator=None):
+    """
+    Generate a concise, optional AI-backed risk summary for a PR.
+
+    If `ai_generator` is provided, it is called with a prompt and should return
+    a 1-2 sentence summary. Any failure falls back to deterministic output.
+    """
+    if ai_generator:
+        prompt = _build_risk_summary_prompt(pr_readiness_data)
+        try:
+            ai_summary = ai_generator(prompt)
+            if isinstance(ai_summary, str) and ai_summary.strip():
+                return ai_summary.strip()
+        except Exception:
+            pass
+
+    return generate_fallback_summary(pr_readiness_data)
+
+
+def _build_risk_summary_prompt(pr_readiness_data):
+    """Build a concise prompt for optional AI summarization backends."""
+    return (
+        "Generate a concise, professional pull request risk summary in 1-2 sentences. "
+        f"Classification: {pr_readiness_data.get('classification', 'NOT_READY')}. "
+        f"Overall score: {pr_readiness_data.get('overall_score', 0)}. "
+        f"Blockers: {pr_readiness_data.get('blockers', [])}. "
+        f"Warnings: {pr_readiness_data.get('warnings', [])}. "
+        f"Recommendations: {pr_readiness_data.get('recommendations', [])}. "
+        "Focus on primary risks and the highest-priority next action."
+    )
+
+
+def generate_fallback_summary(pr_readiness_data):
+    """Generate a deterministic fallback summary if AI is disabled or fails."""
+    blockers = pr_readiness_data.get('blockers', [])
+    warnings = pr_readiness_data.get('warnings', [])
+    merge_ready = pr_readiness_data.get('merge_ready', False)
+
+    if blockers:
+        top_blockers = ', '.join(blockers[:2])
+        return (
+            f"This PR is not merge-ready due to {len(blockers)} blocker(s), including {top_blockers}. "
+            "Resolve blockers before proceeding with merge review."
+        )
+
+    if warnings:
+        top_warning = warnings[0]
+        return (
+            f"This PR is close to merge-ready but still has {len(warnings)} warning(s), led by: {top_warning}. "
+            "Address warnings to reduce integration risk."
+        )
+
+    if merge_ready:
+        return "This PR appears merge-ready with no active blockers or warnings from readiness checks."
+
+    return "This PR has no explicit blockers, but additional reviewer validation is recommended before merge."
